@@ -6,6 +6,7 @@
   "bin": {
     "pdf-converter": "dist/index.js",
     "create-review-batches": "dist/create-review-batches.js",
+    "split-songs": "dist/split-songs.js",
     "restructure-hymns": "dist/restructure-hymns.js",
     "build-metadata-csv": "dist/build-metadata-csv.js"
   },
@@ -14,6 +15,7 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "make-batches": "ts-node src/create-review-batches.ts",
+    "split-songs": "ts-node src/split-songs.ts",
     "restructure": "ts-node src/restructure-hymns.ts",
     "build-metadata": "ts-node src/build-metadata-csv.ts"
   },
