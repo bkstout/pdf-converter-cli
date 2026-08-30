@@ -1,17 +1,21 @@
 {
   "name": "pdf-converter-cli",
-  "version": "1.0.0",
-  "description": "Tools to convert hymn PDFs to Markdown using Adobe PDF Services API and restructure OCR text into GospelCue-style hymn text using an LLM.",
+  "version": "1.1.0",
+  "description": "Tools to convert hymn PDFs to Markdown using Adobe PDF Services API and process them into GospelCue-style hymn records.",
   "main": "dist/index.js",
   "bin": {
     "pdf-converter": "dist/index.js",
-    "restructure-hymns": "dist/restructure-hymns.js"
+    "create-review-batches": "dist/create-review-batches.js",
+    "restructure-hymns": "dist/restructure-hymns.js",
+    "build-metadata-csv": "dist/build-metadata-csv.js"
   },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "restructure": "ts-node src/restructure-hymns.ts"
+    "make-batches": "ts-node src/create-review-batches.ts",
+    "restructure": "ts-node src/restructure-hymns.ts",
+    "build-metadata": "ts-node src/build-metadata-csv.ts"
   },
   "dependencies": {
     "@adobe/pdfservices-node-sdk": "^4.1.0",
