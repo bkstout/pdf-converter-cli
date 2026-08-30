@@ -1,0 +1,10 @@
+node_modules/
+.env
+pdfservices-api-credentials.json
+dist/
+docs/
+!docs/README.md
+*.pdf
+*.md
+!README.md
+.pdfconv-*/
