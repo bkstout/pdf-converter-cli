@@ -1,19 +1,39 @@
-# pdf-converter-cli (Hymn Edition)
+# pdf-converter-cli
 
-Tools to:
-- Convert a hymnal PDF into rough Markdown using **Adobe PDF Services API**, with automatic splitting of scanned files into 100-page chunks.
-- Restructure noisy OCR text into **GospelCue-style cleaned hymn text** using an **LLM** (OpenAI-compatible API).
+A local Node.js/TypeScript workflow for converting scanned hymn PDFs into raw Markdown with Adobe PDF Services API, then processing the output into GospelCue-style hymn records.
+
+The project deliberately keeps PDFs, raw OCR, generated Markdown, LLM outputs, manifests, audit reports, and API credentials outside Git.
+
+## Workflow overview
+
+```text
+Pass 1   Scanned PDF -> Adobe PDF-to-Markdown -> durable 50-page technical chunks + master raw Markdown
+Pass 1.5 Master raw Markdown -> review-batch script -> LLM-sized, song-aware raw batches + manifest
+Pass 2   One raw review batch -> LLM -> GospelCue-style cleaned text + raw model response
+Pass 3   Cleaned text -> metadata script -> CSV + structural audit report
+```
+
+The Adobe chunk boundary is a reliability boundary, not an editorial boundary. Pass 1.5 works from the combined master Markdown and attempts to place LLM batch breaks before likely new-song starts. This gives a song that crosses PDF pages 50/51 a chance to stay together in a single editorial batch.
 
 ## Prerequisites
 
-- Node.js 18+
-- Adobe PDF Services API credentials (Client ID + Client Secret) from: https://developer.adobe.com/document-services/apis/pdf-services/
-- OpenAI-compatible API key (for example, OpenAI API).
+- Node.js 18 or later
+- Adobe PDF Services API Client ID and Client Secret
+- An OpenAI API key with API billing/credits for automated Pass 2, or ChatGPT for manual processing
+
+A ChatGPT subscription does not automatically include OpenAI API usage. The local Pass 2 script calls the API using `OPENAI_API_KEY`.
 
 ## Setup
 
-1. Copy `.env.example` to `.env` and fill in:
+1. Install packages:
+
+   ```powershell
+   npm install
    ```
+
+2. Create `.env` from `.env.example`:
+
+   ```env
    PDF_SERVICES_CLIENT_ID=your_client_id_here
    PDF_SERVICES_CLIENT_SECRET=your_client_secret_here
 
@@ -21,86 +41,84 @@ Tools to:
    OPENAI_MODEL=gpt-4.1-mini
    ```
 
-2. Install dependencies:
-   ```
-   npm install
-   ```
+3. Build:
 
-3. Build the TypeScript sources:
-   ```
+   ```powershell
    npm run build
    ```
 
-## Commands
+Use real values only in `.env`; it is ignored by Git. Never put secrets in `.env.example`, source code, a Git commit, or a ChatGPT prompt.
 
-### 1) Convert hymnal PDF to rough Markdown
+## Pass 1: PDF to Markdown
 
-Interactive:
-```bash
-npm run start
+Place the source PDF in the ignored `docs/` directory, then run:
+
+```powershell
+node dist\index.js --input "docs\ChurchHymnal.pdf" --output "docs\ChurchHymnal-raw"
 ```
 
-Or directly:
-```bash
-node dist/index.js --input "docs/ChurchHymnal.pdf" --output docs/ChurchHymnal-raw
+The converter uses 50-page chunks. A 409-page hymnal becomes nine Adobe conversion jobs: pages 1-50, 51-100, and so on through 401-409. Successful Markdown results are retained per chunk. If an Adobe download or network request fails, run the exact command again without `--overwrite`; completed chunks are skipped and the converter resumes at the missing one.
+
+## Pass 1.5: Make review batches
+
+Create LLM-sized batches from the master raw Markdown, not directly from the 50-page technical chunks:
+
+```powershell
+npm run make-batches -- `
+  --input "docs\ChurchHymnal-raw.md" `
+  --output-dir "docs\review-batches-test" `
+  --target-chars 15000 `
+  --max-chars 20000
 ```
 
-- The tool:
-  - Counts pages using `pdf-lib`.
-  - If page count > 100, uses Adobe **Split PDF** (via SDK) to split into 100-page chunks.
-  - For each chunk, calls Adobe's **PDF to Markdown** REST operation.
-  - Concatenates all chunk Markdown outputs into a single `.md` file, separated by `---` between chunks.
+The script writes raw batch files and `review-batch-manifest.json`. It targets likely new-song starts but cannot perfectly understand music-heavy OCR. Read the manifest and audit the first/last song of every batch.
 
-### 2) Restructure rough Markdown into GospelCue-style cleaned text
+## Pass 2: Clean one review batch
 
-After you have a rough Markdown file (for example `docs/ChurchHymnal-raw.md`):
+Process only one batch first:
 
-```bash
-npm run restructure -- --input docs/ChurchHymnal-raw.md --output docs/ChurchHymnal-Batch01_Cleaned.txt
+```powershell
+npm run restructure -- `
+  --input "docs\review-batches-test\GospelCue_Church_Hymnal_Batch01_Raw.md" `
+  --output "docs\cleaned-batches-test\GospelCue_Church_Hymnal_Batch01_Cleaned.txt"
 ```
 
-- The tool:
-  - Sends the rough Markdown to an OpenAI-compatible chat completion API.
-  - Asks the model to:
-    - Split text into hymns.
-    - Identify hymn titles.
-    - Build a structured hymn text in this format:
+The script saves a sibling `.response.txt` file before validating the model output. It produces plain-text GospelCue records containing `SONG TITLE`, `KEY`, `TIME SIGNATURE`, `TOPIC`, `STYLE`, `TONE`, `TEMPO`, `ARTIST`, and `THEME SUMMARY`, followed by verse and chorus blocks.
 
-      ```
-      SONG TITLE: Kneel At the Cross
-      KEY: D
-      TIME SIGNATURE: 4/4
-      TOPIC: Invitation, Surrender, Salvation, Prayer
-      STYLE: Hymn
-      TONE: invitation
-      TEMPO: moderate
-      ARTIST: Chas. E. Moody
-      THEME SUMMARY: An invitation to surrender every care at the cross and find life, hope, and love in Jesus.
+## Pass 3: Build metadata CSV and audit
 
-      Verse 1:
-      Kneel at the cross, Christ will meet you there,
-      Come while He waits for you;
-      ...
+```powershell
+npm run build-metadata -- `
+  --input "docs\cleaned-batches-test\GospelCue_Church_Hymnal_Batch01_Cleaned.txt" `
+  --metadata "docs\cleaned-batches-test\GospelCue_Church_Hymnal_Batch01_Metadata.csv" `
+  --audit "docs\cleaned-batches-test\GospelCue_Church_Hymnal_Batch01_Audit.txt"
+```
 
-      Chorus:
-      Kneel at the cross, leave every care;
-      Kneel at the cross, Jesus will meet you there.
+The CSV columns are:
 
-      SONG TITLE: Leave Your Sorrows and Come Along
-      KEY: Eb
-      ...
-      ```
+```text
+index, Song #, Song Title, KEY, TIME SIGNATURE, TOPIC, Style, Tone, Tempo, Artist, Theme Summary
+```
 
-    - Reconstruct broken syllables ("Sa -tan" -> "Satan", etc.).
-    - Remove music notation and publisher noise, except where used in metadata.
+`Song #` is intentionally blank; fill it only after confirming it against the hymnal source. The audit validates basic labels and CSV structure; it does not prove lyric accuracy, source coverage, writer/composer information, keys, or time signatures.
 
-## Notes on Adobe limits
+## Manual ChatGPT alternative
 
-- Extract / PDF to Markdown page limits:
-  - Non-scanned PDFs: up to 400 pages per job.
-  - **Scanned PDFs**: 150 pages per job. This tool uses a conservative 100-page chunk size to avoid `SCAN_PAGE_LIMIT_EXCEEDED` errors.
+If you prefer manual ChatGPT cleanup, upload or paste one `GospelCue_Church_Hymnal_Batch##_Raw.md` file at a time. Use this instruction:
 
-## Notes on LLM usage
+```text
+Clean this one raw hymnal batch into plain-text GospelCue records. Preserve source order. Use SONG TITLE, KEY, TIME SIGNATURE, TOPIC, STYLE, TONE, TEMPO, ARTIST, THEME SUMMARY, then Verse and Chorus/Refrain labels. STYLE must be Hymn. Do not invent lyrics, titles, credits, key, or meter. This batch may begin or end with a partial hymn; do not duplicate it or invent missing text. Put uncertain boundary fragments at the end under INCOMPLETE BOUNDARY FRAGMENTS. Return plain text only, without Markdown code fences.
+```
 
-- A full hymnal is large; you may want to run `restructure-hymns` on chunks (for example, several hymns at a time) to stay within model context limits.
-- Review and spot-check the structured output before relying on it in production.
+## Git safety
+
+Before any commit:
+
+```powershell
+git status
+git check-ignore -v .env
+git add src package.json package-lock.json README.md .gitignore docs\README.md
+git status
+```
+
+Never commit `.env`, source PDFs, raw Markdown, cleaned outputs, or generated CSV/audit files. `docs/` is ignored except for `docs/README.md`.

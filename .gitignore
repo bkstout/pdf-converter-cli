@@ -8,4 +8,7 @@ docs/
 *.md
 !README.md
 .pdfconv-*/
-OpenAI_secret.txt
+pdf-chunks/
+*_secret.txt
+*_secrets.txt
+OpenAI-secrets.txt
